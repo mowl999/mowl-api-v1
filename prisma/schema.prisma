@@ -1,0 +1,564 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserState {
+  REGISTERED
+  INACTIVE
+  ACTIVE
+  ELIGIBLE
+  SUSPENDED
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum MemberType {
+  REAL
+  VIRTUAL
+}
+
+enum PlanStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+  SUSPENDED
+}
+
+enum ContributionStatus {
+  PENDING
+  PAID
+  LATE
+  MISSED
+  PAUSED
+}
+
+enum PaymentChannel {
+  GATEWAY
+  BANK_TRANSFER
+}
+
+enum PaymentSubmissionStatus {
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+
+enum CreditReason {
+  INITIAL_DEPOSIT
+  CONTRIBUTION_PAID
+  CONTRIBUTION_LATE
+  PENALTY
+  SWAP_FEE
+  ADMIN_ADJUSTMENT
+}
+
+enum DecisionType {
+  ELIGIBILITY_CHECK
+  POSITION_ASSIGNMENT
+  SWAP_QUOTE
+  SWAP_REQUEST
+  SWAP_REVIEW
+  SWAP_EXECUTE
+}
+
+enum SwapRequestStatus {
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+enum PlanPauseStatus {
+  SUBMITTED
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+
+enum WorkspaceKey {
+  THRIFT
+  INVEST
+  LOANS
+  FUND_TRANSFERS
+  ADMIN // for admin console
+}
+
+enum InvestmentPlanStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum InvestmentProductKey {
+  LONG_TERM
+  SHORT_TERM
+  RETIREMENT
+  LEGACY
+  CHILDREN_FUTURE
+}
+
+enum LedgerDirection {
+  DEBIT
+  CREDIT
+}
+
+enum LoanTransactionType {
+  DISBURSEMENT
+  REPAYMENT
+  INTEREST_CHARGE
+  FEE
+  WAIVER
+  ADJUSTMENT
+}
+
+enum FundTransferTransactionType {
+  REMITTANCE_OUT
+  REMITTANCE_IN
+  SETTLEMENT
+  FX_FEE
+  TRANSFER_FEE
+  REFUND
+  ADJUSTMENT
+}
+
+model User {
+  id        String    @id @default(cuid())
+  firstName String?
+  lastName  String?
+  fullName  String
+  email     String    @unique
+  password  String
+  state     UserState @default(INACTIVE)
+  role      UserRole  @default(USER)
+  emailVerifiedAt DateTime?
+  monthlyIncome Float?
+  monthlyExpenses Float?
+  otherMonthlyEarnings Float @default(0)
+  createdAt DateTime  @default(now())
+
+  // ✅ workspace assignments
+  workspaces UserWorkspace[]
+
+  deposits      InitialDeposit[]
+  plans         Plan[]
+  contributions Contribution[]
+  creditLedger  CreditLedger[]
+  penalties     Penalty[]
+  decisions     DecisionLog[]
+  swaps         Swap[]
+  passwordResetTokens PasswordResetToken[]
+  emailVerificationOtps EmailVerificationOtp[]
+  contributionPayments ContributionPayment[]
+  pauses PlanPause[]
+  investmentPlans InvestmentPlan[]
+  investmentRateOverrides InvestmentUserRate[]
+  loanTransactions LoanTransaction[]
+  fundTransferTransactions FundTransferTransaction[]
+}
+
+model LoginThrottle {
+  id             String   @id @default(cuid())
+  email          String   @unique
+  failedAttempts Int      @default(0)
+  lockedUntil    DateTime?
+  lastFailedAt   DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model UserWorkspace {
+  id          String       @id @default(cuid())
+  userId      String
+  workspace   WorkspaceKey
+  createdAt   DateTime     @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workspace])
+  @@index([userId])
+}
+
+model RuleConfig {
+  id                String @id @default(cuid())
+  version           Int    @unique
+  currency          String @default("GBP")
+  minInitialDeposit Float
+
+  creditRatePer10  Float
+  multiplierEarly  Float
+  multiplierOnTime Float
+  multiplierLate   Float
+
+  eligibilityMinCredits            Float
+  eligibilityMinContributionMonths Int
+  eligibilityMinPercent            Float
+  eligibilityMinTrustScore         Float
+  postPayoutMissedPenaltyMultiplier Float @default(2.0)
+  maxDisposableCommitmentPct Float @default(0.6)
+  positionEarlyChargePct     Float @default(0.10)
+  positionLateCompensationPct Float @default(0.03)
+  contributionsCountryCode   String @default("GB")
+  contributionsEnabledPaymentMethods Json?
+  pauseFeatureEnabled Boolean @default(true)
+  pauseFeePerMonth Float @default(50)
+  maxPauseMonths Int @default(2)
+
+
+  swapFactor       Float
+  swapDiscountRate Float
+  maxSwapsPerPlan  Int
+  feeFloorAmount   Float @default(0)
+
+  missedPaymentCredits Float
+  swapAbuseCredits     Float
+  planDefaultCredits   Float
+
+  createdAt DateTime @default(now())
+
+  plans Plan[]
+}
+
+model InvestmentProduct {
+  id            String               @id @default(cuid())
+  key           InvestmentProductKey @unique
+  name          String
+  description   String?
+  annualRatePct Float
+  minMonths     Int                  @default(3)
+  maxMonths     Int                  @default(240)
+  currency      String               @default("GBP")
+  isActive      Boolean              @default(true)
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  plans InvestmentPlan[]
+  userRateOverrides InvestmentUserRate[]
+}
+
+model InvestmentPlan {
+  id                  String               @id @default(cuid())
+  userId              String
+  productId           String
+  name                String
+  status              InvestmentPlanStatus @default(ACTIVE)
+  monthlyContribution Float
+  durationMonths      Int
+  annualRatePct       Float
+  currency            String               @default("GBP")
+  startDate           DateTime             @default(now())
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  user    User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product InvestmentProduct @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([userId, createdAt])
+  @@index([productId, createdAt])
+}
+
+model InvestmentUserRate {
+  id            String   @id @default(cuid())
+  userId        String
+  productId     String
+  annualRatePct Float
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user    User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product InvestmentProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+  @@index([userId, productId])
+}
+
+model LoanTransaction {
+  id          String              @id @default(cuid())
+  userId      String
+  type        LoanTransactionType
+  direction   LedgerDirection
+  amount      Float
+  currency    String              @default("GBP")
+  reference   String?
+  note        String?
+  metadata    Json?
+  createdAt   DateTime            @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+model FundTransferTransaction {
+  id          String                    @id @default(cuid())
+  userId      String
+  type        FundTransferTransactionType
+  direction   LedgerDirection
+  amount      Float
+  currency    String                    @default("GBP")
+  reference   String?
+  note        String?
+  metadata    Json?
+  createdAt   DateTime                  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+model InitialDeposit {
+  id         String   @id @default(cuid())
+  userId     String
+  amount     Float
+  currency   String
+  locked     Boolean  @default(true)
+  paymentRef String
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model Plan {
+  id                 String     @id @default(cuid())
+  userId             String
+  name               String
+  memberCount        Int
+  contributionAmount Float
+  currency           String     @default("GBP")
+  frequency          String     @default("MONTHLY")
+  status             PlanStatus @default(ACTIVE)
+
+  ruleConfigId      String
+  assignedPosition  Int
+  swapsUsed         Int    @default(0)
+  currentCycleIndex Int    @default(0)
+
+  feePoolAmount Float @default(0)
+
+  createdAt DateTime @default(now())
+
+  user          User           @relation(fields: [userId], references: [id])
+  ruleConfig    RuleConfig     @relation(fields: [ruleConfigId], references: [id])
+  members       PlanMember[]
+  contributions Contribution[]
+  swaps         Swap[]
+  decisions     DecisionLog[]
+  payouts Payout[]
+  contributionPayments ContributionPayment[]
+  pauses        PlanPause[]
+
+}
+
+model PlanMember {
+  id          String     @id @default(cuid())
+  planId      String
+  type        MemberType
+  displayName String
+  position    Int
+
+  plan Plan @relation(fields: [planId], references: [id])
+
+  @@unique([planId, position])
+}
+
+model Contribution {
+  id                String             @id @default(cuid())
+  planId            String
+  userId            String
+  amount            Float
+  cycleIndex        Int
+  status            ContributionStatus @default(PENDING)
+  creditsAwarded    Float              @default(0)
+  multiplierApplied Float              @default(1.0)
+  paymentRef        String?
+  paidAt            DateTime?
+  createdAt         DateTime           @default(now())
+  paymentSubmissions ContributionPayment[]
+
+  plan Plan @relation(fields: [planId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([planId, cycleIndex])
+}
+
+model ContributionPayment {
+  id              String                  @id @default(cuid())
+  contributionId  String
+  planId          String
+  userId          String
+  amount          Float
+  currency        String
+  channel         PaymentChannel
+  status          PaymentSubmissionStatus @default(SUBMITTED)
+  providerRef     String?
+  userReference   String?
+  receiptUrl      String?
+  note            String?
+  reviewedById    String?
+  reviewNote      String?
+  submittedAt     DateTime                @default(now())
+  reviewedAt      DateTime?
+  createdAt       DateTime                @default(now())
+
+  contribution Contribution @relation(fields: [contributionId], references: [id], onDelete: Cascade)
+  plan         Plan         @relation(fields: [planId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status, submittedAt])
+  @@index([userId, submittedAt])
+  @@index([planId, submittedAt])
+  @@index([contributionId, submittedAt])
+}
+
+model PlanPause {
+  id              String          @id @default(cuid())
+  planId           String
+  userId           String
+  startCycleIndex  Int
+  endCycleIndex    Int
+  months           Int
+  feePerMonth      Float
+  totalFee         Float
+  status           PlanPauseStatus @default(SUBMITTED)
+  paymentRef       String?
+  note             String?
+  reviewedById     String?
+  reviewNote       String?
+  reviewedAt       DateTime?
+  paidAt           DateTime?
+  createdAt        DateTime        @default(now())
+
+  plan Plan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([planId, createdAt])
+  @@index([userId, createdAt])
+}
+
+model CreditLedger {
+  id           String       @id @default(cuid())
+  userId       String
+  delta        Float
+  balanceAfter Float
+  reason       CreditReason
+  referenceId  String?
+  createdAt    DateTime     @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+}
+
+model Penalty {
+  id           String   @id @default(cuid())
+  userId       String
+  code         String
+  creditsDelta Float
+  createdAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model Swap {
+  id           String   @id @default(cuid())
+  planId       String
+  userId       String
+  fromPosition Int
+  toPosition   Int
+  steps        Int
+  feeCharged   Float
+  status       SwapRequestStatus @default(SUBMITTED)
+  reviewedById String?
+  reviewNote   String?
+  reviewedAt   DateTime?
+  createdAt    DateTime @default(now())
+
+  plan Plan @relation(fields: [planId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([planId, createdAt])
+}
+
+model DecisionLog {
+  id           String       @id @default(cuid())
+  decisionType DecisionType
+  userId       String
+  planId       String?
+  inputs       Json
+  ruleApplied  String
+  outcome      Json
+  createdAt    DateTime     @default(now())
+
+  user User  @relation(fields: [userId], references: [id])
+  plan Plan? @relation(fields: [planId], references: [id])
+
+  @@index([userId, createdAt])
+}
+
+enum PayoutStatus {
+  PENDING
+  SENT
+  CANCELLED
+}
+
+model Payout {
+  id                String       @id @default(cuid())
+  planId            String
+  cycleIndex         Int
+  recipientPosition  Int
+  recipientType      MemberType   // ✅ use enum
+  recipientName      String
+  amount             Float
+  currency           String
+  status             PayoutStatus @default(PENDING)
+  sentAt             DateTime?
+  reference          String?
+  note               String?
+  createdAt          DateTime     @default(now())
+
+  plan               Plan         @relation(fields: [planId], references: [id])
+
+  @@unique([planId, cycleIndex])
+}
+
+model PasswordResetToken {
+  id         String   @id @default(cuid())
+  userId     String
+  tokenHash  String
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model EmailVerificationOtp {
+  id         String   @id @default(cuid())
+  userId     String
+  codeHash   String
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([expiresAt])
+}

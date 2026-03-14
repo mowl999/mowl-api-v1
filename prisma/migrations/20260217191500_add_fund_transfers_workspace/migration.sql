@@ -1,0 +1,1 @@
+ALTER TYPE "public"."WorkspaceKey" ADD VALUE IF NOT EXISTS 'FUND_TRANSFERS';

@@ -1,0 +1,3 @@
+ALTER TABLE "public"."RuleConfig"
+ADD COLUMN "positionEarlyChargePct" DOUBLE PRECISION NOT NULL DEFAULT 0.10,
+ADD COLUMN "positionLateCompensationPct" DOUBLE PRECISION NOT NULL DEFAULT 0.03;
