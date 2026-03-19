@@ -56,7 +56,6 @@ enum PaymentSubmissionStatus {
   REJECTED
 }
 
-
 enum CreditReason {
   INITIAL_DEPOSIT
   CONTRIBUTION_PAID
@@ -88,13 +87,17 @@ enum PlanPauseStatus {
   CANCELLED
 }
 
-
 enum WorkspaceKey {
   THRIFT
   INVEST
   LOANS
   FUND_TRANSFERS
   ADMIN // for admin console
+}
+
+enum UserNotificationType {
+  LOAN_REPAYMENT_DUE_SOON
+  LOAN_REPAYMENT_OVERDUE
 }
 
 enum InvestmentPlanStatus {
@@ -111,6 +114,38 @@ enum InvestmentProductKey {
   CHILDREN_FUTURE
 }
 
+enum LoanApplicationStatus {
+  DRAFT
+  SUBMITTED
+  IN_REVIEW
+  MORE_INFO_REQUIRED
+  APPROVED
+  REJECTED
+}
+
+enum LoanApplicationUpdateType {
+  APPLICATION_CREATED
+  APPLICATION_UPDATED
+  DOCUMENT_UPLOADED
+  DOCUMENT_REMOVED
+  SUBMITTED
+  INFO_REQUESTED
+  CUSTOMER_RESPONSE
+  APPROVED
+  REJECTED
+  DISBURSED
+  SCHEDULE_GENERATED
+}
+
+enum LoanDocumentType {
+  IDENTITY
+  EMPLOYMENT_EVIDENCE
+  BANK_STATEMENT
+  BUSINESS_PROOF
+  ADDRESS_PROOF
+  OTHER
+}
+
 enum LedgerDirection {
   DEBIT
   CREDIT
@@ -125,6 +160,14 @@ enum LoanTransactionType {
   ADJUSTMENT
 }
 
+enum LoanRepaymentStatus {
+  PENDING
+  PARTIAL
+  PAID
+  OVERDUE
+  WAIVED
+}
+
 enum FundTransferTransactionType {
   REMITTANCE_OUT
   REMITTANCE_IN
@@ -136,55 +179,63 @@ enum FundTransferTransactionType {
 }
 
 model User {
-  id        String    @id @default(cuid())
-  firstName String?
-  lastName  String?
-  fullName  String
-  email     String    @unique
-  password  String
-  state     UserState @default(INACTIVE)
-  role      UserRole  @default(USER)
-  emailVerifiedAt DateTime?
-  monthlyIncome Float?
-  monthlyExpenses Float?
-  otherMonthlyEarnings Float @default(0)
-  createdAt DateTime  @default(now())
+  id                   String    @id @default(cuid())
+  firstName            String?
+  lastName             String?
+  fullName             String
+  email                String    @unique
+  password             String
+  state                UserState @default(INACTIVE)
+  role                 UserRole  @default(USER)
+  emailVerifiedAt      DateTime?
+  monthlyIncome        Float?
+  monthlyExpenses      Float?
+  otherMonthlyEarnings Float     @default(0)
+  createdAt            DateTime  @default(now())
 
   // ✅ workspace assignments
   workspaces UserWorkspace[]
 
-  deposits      InitialDeposit[]
-  plans         Plan[]
-  contributions Contribution[]
-  creditLedger  CreditLedger[]
-  penalties     Penalty[]
-  decisions     DecisionLog[]
-  swaps         Swap[]
-  passwordResetTokens PasswordResetToken[]
-  emailVerificationOtps EmailVerificationOtp[]
-  contributionPayments ContributionPayment[]
-  pauses PlanPause[]
-  investmentPlans InvestmentPlan[]
-  investmentRateOverrides InvestmentUserRate[]
-  loanTransactions LoanTransaction[]
+  deposits                 InitialDeposit[]
+  plans                    Plan[]
+  contributions            Contribution[]
+  creditLedger             CreditLedger[]
+  penalties                Penalty[]
+  decisions                DecisionLog[]
+  swaps                    Swap[]
+  passwordResetTokens      PasswordResetToken[]
+  emailVerificationOtps    EmailVerificationOtp[]
+  contributionPayments     ContributionPayment[]
+  pauses                   PlanPause[]
+  investmentPlans          InvestmentPlan[]
+  investmentRateOverrides  InvestmentUserRate[]
+  loanApplications         LoanApplication[]
+  loanEquityContributions  LoanEquityContribution[]
+  loanEquityPayments       LoanEquityPayment[]
+  loanRepaymentPayments    LoanRepaymentPayment[]
+  reviewedLoanApplications LoanApplication[]         @relation("LoanApplicationReviewedBy")
+  disbursedLoanApplications LoanApplication[]        @relation("LoanApplicationDisbursedBy")
+  loanTransactions         LoanTransaction[]
   fundTransferTransactions FundTransferTransaction[]
+  notifications            UserNotification[]
+  loanRepaymentReminderLogs LoanRepaymentReminderLog[]
 }
 
 model LoginThrottle {
-  id             String   @id @default(cuid())
-  email          String   @unique
-  failedAttempts Int      @default(0)
+  id             String    @id @default(cuid())
+  email          String    @unique
+  failedAttempts Int       @default(0)
   lockedUntil    DateTime?
   lastFailedAt   DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 }
 
 model UserWorkspace {
-  id          String       @id @default(cuid())
-  userId      String
-  workspace   WorkspaceKey
-  createdAt   DateTime     @default(now())
+  id        String       @id @default(cuid())
+  userId    String
+  workspace WorkspaceKey
+  createdAt DateTime     @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -203,20 +254,19 @@ model RuleConfig {
   multiplierOnTime Float
   multiplierLate   Float
 
-  eligibilityMinCredits            Float
-  eligibilityMinContributionMonths Int
-  eligibilityMinPercent            Float
-  eligibilityMinTrustScore         Float
-  postPayoutMissedPenaltyMultiplier Float @default(2.0)
-  maxDisposableCommitmentPct Float @default(0.6)
-  positionEarlyChargePct     Float @default(0.10)
-  positionLateCompensationPct Float @default(0.03)
-  contributionsCountryCode   String @default("GB")
+  eligibilityMinCredits              Float
+  eligibilityMinContributionMonths   Int
+  eligibilityMinPercent              Float
+  eligibilityMinTrustScore           Float
+  postPayoutMissedPenaltyMultiplier  Float   @default(2.0)
+  maxDisposableCommitmentPct         Float   @default(0.6)
+  positionEarlyChargePct             Float   @default(0.10)
+  positionLateCompensationPct        Float   @default(0.03)
+  contributionsCountryCode           String  @default("GB")
   contributionsEnabledPaymentMethods Json?
-  pauseFeatureEnabled Boolean @default(true)
-  pauseFeePerMonth Float @default(50)
-  maxPauseMonths Int @default(2)
-
+  pauseFeatureEnabled                Boolean @default(true)
+  pauseFeePerMonth                   Float   @default(50)
+  maxPauseMonths                     Int     @default(2)
 
   swapFactor       Float
   swapDiscountRate Float
@@ -245,7 +295,7 @@ model InvestmentProduct {
   createdAt     DateTime             @default(now())
   updatedAt     DateTime             @updatedAt
 
-  plans InvestmentPlan[]
+  plans             InvestmentPlan[]
   userRateOverrides InvestmentUserRate[]
 }
 
@@ -286,34 +336,288 @@ model InvestmentUserRate {
   @@index([userId, productId])
 }
 
-model LoanTransaction {
-  id          String              @id @default(cuid())
-  userId      String
-  type        LoanTransactionType
-  direction   LedgerDirection
-  amount      Float
-  currency    String              @default("GBP")
-  reference   String?
-  note        String?
-  metadata    Json?
-  createdAt   DateTime            @default(now())
+model LoanSettings {
+  id                        String   @id @default(cuid())
+  upcomingReminderDays      Int      @default(7)
+  overdueReminderRepeatDays Int      @default(7)
+  emailRemindersEnabled     Boolean  @default(true)
+  inAppRemindersEnabled     Boolean  @default(true)
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+}
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+model LoanProduct {
+  id                String   @id @default(cuid())
+  slug              String   @unique
+  name              String
+  description       String?
+  minAmount         Float
+  maxAmount         Float
+  minTermMonths     Int
+  maxTermMonths     Int
+  annualInterestRatePct Float @default(0.18)
+  processingFeePct      Float @default(0)
+  equityRequirementPct  Float @default(0)
+  minimumEquityAmount   Float @default(0)
+  currency          String   @default("GBP")
+  requiredDocuments Json?
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
+  applications LoanApplication[]
+}
+
+model LoanApplication {
+  id                     String                @id @default(cuid())
+  userId                 String
+  productId              String
+  status                 LoanApplicationStatus @default(DRAFT)
+  amountRequested        Float
+  termMonths             Int
+  purpose                String
+  employmentStatus       String?
+  employerName           String?
+  businessName           String?
+  monthlyIncomeSnapshot  Float?
+  monthlyExpenseSnapshot Float?
+  applicantNote          String?
+  reviewNote             String?
+  approvedAmount         Float?
+  approvedTermMonths     Int?
+  annualInterestRatePct  Float?
+  processingFeePct       Float?
+  disbursedAmount        Float?
+  disbursementRef        String?
+  disbursedById          String?
+  disbursedAt            DateTime?
+  repaymentStartDate     DateTime?
+  reviewedById           String?
+  reviewedAt             DateTime?
+  submittedAt            DateTime              @default(now())
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
+
+  user                User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product             LoanProduct               @relation(fields: [productId], references: [id], onDelete: Restrict)
+  reviewedBy          User?                     @relation("LoanApplicationReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  disbursedBy         User?                     @relation("LoanApplicationDisbursedBy", fields: [disbursedById], references: [id], onDelete: SetNull)
+  documents           LoanApplicationDocument[]
+  equityContributions LoanEquityContribution[]
+  equityPayments      LoanEquityPayment[]
+  repaymentPayments   LoanRepaymentPayment[]
+  updates             LoanApplicationUpdate[]
+  repaymentSchedule   LoanRepaymentInstallment[]
+  transactions        LoanTransaction[]
+
+  @@index([userId, submittedAt])
+  @@index([productId, submittedAt])
+  @@index([status, submittedAt])
+}
+
+model LoanApplicationUpdate {
+  id            String                    @id @default(cuid())
+  applicationId String
+  actorType     String
+  entryType     LoanApplicationUpdateType
+  title         String
+  note          String?
+  metadata      Json?
+  createdAt     DateTime                  @default(now())
+
+  application LoanApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId, createdAt])
+}
+
+model LoanApplicationDocument {
+  id            String           @id @default(cuid())
+  applicationId String
+  documentType  LoanDocumentType
+  originalName  String
+  mimeType      String
+  sizeBytes     Int
+  storageKey    String
+  storageBucket String
+  uploadedAt    DateTime         @default(now())
+
+  application LoanApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId, uploadedAt])
+}
+
+model LoanEquityContribution {
+  id            String         @id @default(cuid())
+  applicationId String
+  userId        String
+  amount        Float
+  currency      String         @default("GBP")
+  channel       PaymentChannel
+  paymentRef    String?
+  paidAt        DateTime?
+  createdAt     DateTime       @default(now())
+
+  application LoanApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId, createdAt])
   @@index([userId, createdAt])
 }
 
+model LoanEquityPayment {
+  id            String                  @id @default(cuid())
+  applicationId String
+  userId        String
+  amount        Float
+  currency      String                  @default("GBP")
+  channel       PaymentChannel
+  status        PaymentSubmissionStatus @default(SUBMITTED)
+  providerRef   String?
+  userReference String?
+  receiptUrl    String?
+  note          String?
+  reviewedById  String?
+  reviewNote    String?
+  submittedAt   DateTime                @default(now())
+  reviewedAt    DateTime?
+  createdAt     DateTime                @default(now())
+
+  application LoanApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status, submittedAt])
+  @@index([applicationId, submittedAt])
+  @@index([userId, submittedAt])
+}
+
+model LoanTransaction {
+  id        String              @id @default(cuid())
+  userId    String
+  applicationId String?
+  installmentId String?
+  type      LoanTransactionType
+  direction LedgerDirection
+  amount    Float
+  currency  String              @default("GBP")
+  reference String?
+  note      String?
+  metadata  Json?
+  createdAt DateTime            @default(now())
+
+  user        User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  application LoanApplication?        @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+  installment LoanRepaymentInstallment? @relation(fields: [installmentId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([applicationId, createdAt])
+  @@index([installmentId])
+}
+
+model LoanRepaymentInstallment {
+  id                String              @id @default(cuid())
+  applicationId     String
+  installmentNumber Int
+  dueDate           DateTime
+  principalAmount   Float
+  interestAmount    Float   @default(0)
+  feeAmount         Float   @default(0)
+  totalDue          Float
+  amountPaid        Float   @default(0)
+  status            LoanRepaymentStatus @default(PENDING)
+  paidAt            DateTime?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  application LoanApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  transactions      LoanTransaction[]
+  repaymentPayments LoanRepaymentPayment[]
+  reminderLogs      LoanRepaymentReminderLog[]
+
+  @@unique([applicationId, installmentNumber])
+  @@index([applicationId, dueDate])
+  @@index([status, dueDate])
+}
+
+model LoanRepaymentPayment {
+  id            String                  @id @default(cuid())
+  applicationId String
+  installmentId String
+  userId        String
+  amount        Float
+  currency      String                  @default("GBP")
+  channel       PaymentChannel
+  status        PaymentSubmissionStatus @default(SUBMITTED)
+  providerRef   String?
+  userReference String?
+  receiptUrl    String?
+  note          String?
+  reviewedById  String?
+  reviewNote    String?
+  submittedAt   DateTime                @default(now())
+  reviewedAt    DateTime?
+  createdAt     DateTime                @default(now())
+
+  application LoanApplication         @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  installment LoanRepaymentInstallment @relation(fields: [installmentId], references: [id], onDelete: Cascade)
+  user        User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status, submittedAt])
+  @@index([applicationId, submittedAt])
+  @@index([installmentId, submittedAt])
+  @@index([userId, submittedAt])
+}
+
+model UserNotification {
+  id        String               @id @default(cuid())
+  userId     String
+  workspace  WorkspaceKey
+  type       UserNotificationType
+  title      String
+  message    String
+  data       Json?
+  isRead     Boolean             @default(false)
+  dismissedAt DateTime?
+  createdAt  DateTime            @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  reminderLogs LoanRepaymentReminderLog[]
+
+  @@index([userId, workspace, createdAt])
+  @@index([userId, workspace, dismissedAt, createdAt])
+  @@index([type, createdAt])
+}
+
+model LoanRepaymentReminderLog {
+  id             String               @id @default(cuid())
+  installmentId  String
+  userId         String
+  notificationId String?
+  reminderType   UserNotificationType
+  periodKey      String
+  emailSent      Boolean              @default(false)
+  createdAt      DateTime             @default(now())
+
+  installment  LoanRepaymentInstallment @relation(fields: [installmentId], references: [id], onDelete: Cascade)
+  user         User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notification UserNotification?       @relation(fields: [notificationId], references: [id], onDelete: SetNull)
+
+  @@unique([installmentId, reminderType, periodKey])
+  @@index([userId, createdAt])
+  @@index([reminderType, createdAt])
+}
+
 model FundTransferTransaction {
-  id          String                    @id @default(cuid())
-  userId      String
-  type        FundTransferTransactionType
-  direction   LedgerDirection
-  amount      Float
-  currency    String                    @default("GBP")
-  reference   String?
-  note        String?
-  metadata    Json?
-  createdAt   DateTime                  @default(now())
+  id        String                      @id @default(cuid())
+  userId    String
+  type      FundTransferTransactionType
+  direction LedgerDirection
+  amount    Float
+  currency  String                      @default("GBP")
+  reference String?
+  note      String?
+  metadata  Json?
+  createdAt DateTime                    @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -351,16 +655,15 @@ model Plan {
 
   createdAt DateTime @default(now())
 
-  user          User           @relation(fields: [userId], references: [id])
-  ruleConfig    RuleConfig     @relation(fields: [ruleConfigId], references: [id])
-  members       PlanMember[]
-  contributions Contribution[]
-  swaps         Swap[]
-  decisions     DecisionLog[]
-  payouts Payout[]
+  user                 User                  @relation(fields: [userId], references: [id])
+  ruleConfig           RuleConfig            @relation(fields: [ruleConfigId], references: [id])
+  members              PlanMember[]
+  contributions        Contribution[]
+  swaps                Swap[]
+  decisions            DecisionLog[]
+  payouts              Payout[]
   contributionPayments ContributionPayment[]
-  pauses        PlanPause[]
-
+  pauses               PlanPause[]
 }
 
 model PlanMember {
@@ -376,17 +679,17 @@ model PlanMember {
 }
 
 model Contribution {
-  id                String             @id @default(cuid())
-  planId            String
-  userId            String
-  amount            Float
-  cycleIndex        Int
-  status            ContributionStatus @default(PENDING)
-  creditsAwarded    Float              @default(0)
-  multiplierApplied Float              @default(1.0)
-  paymentRef        String?
-  paidAt            DateTime?
-  createdAt         DateTime           @default(now())
+  id                 String                @id @default(cuid())
+  planId             String
+  userId             String
+  amount             Float
+  cycleIndex         Int
+  status             ContributionStatus    @default(PENDING)
+  creditsAwarded     Float                 @default(0)
+  multiplierApplied  Float                 @default(1.0)
+  paymentRef         String?
+  paidAt             DateTime?
+  createdAt          DateTime              @default(now())
   paymentSubmissions ContributionPayment[]
 
   plan Plan @relation(fields: [planId], references: [id])
@@ -396,23 +699,23 @@ model Contribution {
 }
 
 model ContributionPayment {
-  id              String                  @id @default(cuid())
-  contributionId  String
-  planId          String
-  userId          String
-  amount          Float
-  currency        String
-  channel         PaymentChannel
-  status          PaymentSubmissionStatus @default(SUBMITTED)
-  providerRef     String?
-  userReference   String?
-  receiptUrl      String?
-  note            String?
-  reviewedById    String?
-  reviewNote      String?
-  submittedAt     DateTime                @default(now())
-  reviewedAt      DateTime?
-  createdAt       DateTime                @default(now())
+  id             String                  @id @default(cuid())
+  contributionId String
+  planId         String
+  userId         String
+  amount         Float
+  currency       String
+  channel        PaymentChannel
+  status         PaymentSubmissionStatus @default(SUBMITTED)
+  providerRef    String?
+  userReference  String?
+  receiptUrl     String?
+  note           String?
+  reviewedById   String?
+  reviewNote     String?
+  submittedAt    DateTime                @default(now())
+  reviewedAt     DateTime?
+  createdAt      DateTime                @default(now())
 
   contribution Contribution @relation(fields: [contributionId], references: [id], onDelete: Cascade)
   plan         Plan         @relation(fields: [planId], references: [id], onDelete: Cascade)
@@ -426,21 +729,21 @@ model ContributionPayment {
 
 model PlanPause {
   id              String          @id @default(cuid())
-  planId           String
-  userId           String
-  startCycleIndex  Int
-  endCycleIndex    Int
-  months           Int
-  feePerMonth      Float
-  totalFee         Float
-  status           PlanPauseStatus @default(SUBMITTED)
-  paymentRef       String?
-  note             String?
-  reviewedById     String?
-  reviewNote       String?
-  reviewedAt       DateTime?
-  paidAt           DateTime?
-  createdAt        DateTime        @default(now())
+  planId          String
+  userId          String
+  startCycleIndex Int
+  endCycleIndex   Int
+  months          Int
+  feePerMonth     Float
+  totalFee        Float
+  status          PlanPauseStatus @default(SUBMITTED)
+  paymentRef      String?
+  note            String?
+  reviewedById    String?
+  reviewNote      String?
+  reviewedAt      DateTime?
+  paidAt          DateTime?
+  createdAt       DateTime        @default(now())
 
   plan Plan @relation(fields: [planId], references: [id], onDelete: Cascade)
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -474,7 +777,7 @@ model Penalty {
 }
 
 model Swap {
-  id           String   @id @default(cuid())
+  id           String            @id @default(cuid())
   planId       String
   userId       String
   fromPosition Int
@@ -485,7 +788,7 @@ model Swap {
   reviewedById String?
   reviewNote   String?
   reviewedAt   DateTime?
-  createdAt    DateTime @default(now())
+  createdAt    DateTime          @default(now())
 
   plan Plan @relation(fields: [planId], references: [id])
   user User @relation(fields: [userId], references: [id])
@@ -518,30 +821,30 @@ enum PayoutStatus {
 model Payout {
   id                String       @id @default(cuid())
   planId            String
-  cycleIndex         Int
-  recipientPosition  Int
-  recipientType      MemberType   // ✅ use enum
-  recipientName      String
-  amount             Float
-  currency           String
-  status             PayoutStatus @default(PENDING)
-  sentAt             DateTime?
-  reference          String?
-  note               String?
-  createdAt          DateTime     @default(now())
+  cycleIndex        Int
+  recipientPosition Int
+  recipientType     MemberType // ✅ use enum
+  recipientName     String
+  amount            Float
+  currency          String
+  status            PayoutStatus @default(PENDING)
+  sentAt            DateTime?
+  reference         String?
+  note              String?
+  createdAt         DateTime     @default(now())
 
-  plan               Plan         @relation(fields: [planId], references: [id])
+  plan Plan @relation(fields: [planId], references: [id])
 
   @@unique([planId, cycleIndex])
 }
 
 model PasswordResetToken {
-  id         String   @id @default(cuid())
-  userId     String
-  tokenHash  String
-  expiresAt  DateTime
-  usedAt     DateTime?
-  createdAt  DateTime @default(now())
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id])
 
@@ -550,12 +853,12 @@ model PasswordResetToken {
 }
 
 model EmailVerificationOtp {
-  id         String   @id @default(cuid())
-  userId     String
-  codeHash   String
-  expiresAt  DateTime
-  usedAt     DateTime?
-  createdAt  DateTime @default(now())
+  id        String    @id @default(cuid())
+  userId    String
+  codeHash  String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

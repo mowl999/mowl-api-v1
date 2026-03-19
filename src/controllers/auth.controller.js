@@ -31,6 +31,16 @@ const loginSchema = z.object({
   password: z.string().min(1),
 });
 
+const updateProfileSchema = z.object({
+  firstName: z.string().trim().min(2),
+  lastName: z.string().trim().min(2),
+});
+
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(10),
+});
+
 function safeUser(user) {
   return {
     id: user.id,
@@ -649,6 +659,18 @@ async function login(req, res) {
   // Credentials are valid, clear throttle state for this email.
   await prisma.loginThrottle.delete({ where: { email } }).catch(() => {});
 
+  if (user.state === "INACTIVE" || user.state === "SUSPENDED") {
+    return res.status(403).json({
+      error: {
+        code: "ACCOUNT_INACTIVE",
+        message:
+          user.state === "SUSPENDED"
+            ? "This account has been suspended. Please contact support."
+            : "This account is inactive. Please contact support or your administrator.",
+      },
+    });
+  }
+
   let currentUser = user;
   if (!currentUser.emailVerifiedAt) {
     if (currentUser.role !== "ADMIN") {
@@ -851,6 +873,132 @@ async function updateFinancialProfile(req, res) {
   });
 }
 
+async function updateProfile(req, res) {
+  const userId = req.user?.id;
+  if (!userId) {
+    return res.status(401).json({
+      error: { code: "UNAUTHORIZED", message: "Unauthorized." },
+    });
+  }
+
+  const parsed = updateProfileSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "Invalid profile details.",
+        details: parsed.error.flatten(),
+      },
+    });
+  }
+
+  const existing = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, email: true, firstName: true, lastName: true },
+  });
+
+  if (!existing) {
+    return res.status(404).json({
+      error: { code: "NOT_FOUND", message: "User not found." },
+    });
+  }
+
+  const firstName = parsed.data.firstName.trim();
+  const lastName = parsed.data.lastName.trim();
+
+  const updated = await prisma.user.update({
+    where: { id: userId },
+    data: {
+      firstName,
+      lastName,
+      fullName: buildFullName(firstName, lastName),
+    },
+  });
+
+  return res.status(200).json({
+    ok: true,
+    user: safeUser(updated),
+  });
+}
+
+async function changePassword(req, res) {
+  const userId = req.user?.id;
+  if (!userId) {
+    return res.status(401).json({
+      error: { code: "UNAUTHORIZED", message: "Unauthorized." },
+    });
+  }
+
+  const parsed = changePasswordSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "Invalid password update.",
+        details: parsed.error.flatten(),
+      },
+    });
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      email: true,
+      password: true,
+      firstName: true,
+      lastName: true,
+    },
+  });
+
+  if (!user) {
+    return res.status(404).json({
+      error: { code: "NOT_FOUND", message: "User not found." },
+    });
+  }
+
+  const ok = await bcrypt.compare(parsed.data.currentPassword, user.password);
+  if (!ok) {
+    return res.status(400).json({
+      error: { code: "INVALID_PASSWORD", message: "Current password is incorrect." },
+    });
+  }
+
+  if (parsed.data.currentPassword === parsed.data.newPassword) {
+    return res.status(400).json({
+      error: { code: "INVALID_PASSWORD", message: "New password must be different from current password." },
+    });
+  }
+
+  const weakPasswordMessage = assertStrongSignupPassword(parsed.data.newPassword, {
+    firstName: user.firstName || "",
+    lastName: user.lastName || "",
+    email: user.email,
+  });
+
+  if (weakPasswordMessage) {
+    return res.status(400).json({
+      error: { code: "WEAK_PASSWORD", message: weakPasswordMessage },
+    });
+  }
+
+  const passwordHash = await bcrypt.hash(parsed.data.newPassword, 12);
+  await prisma.$transaction(async (tx) => {
+    await tx.user.update({
+      where: { id: userId },
+      data: { password: passwordHash },
+    });
+    await tx.passwordResetToken.deleteMany({
+      where: { userId },
+    });
+  });
+
+  return res.status(200).json({
+    ok: true,
+    message: "Password updated successfully.",
+  });
+}
+
 module.exports = {
   signup,
   completeSignup,
@@ -858,6 +1006,8 @@ module.exports = {
   verifyEmailOtp,
   resendEmailOtp,
   updateFinancialProfile,
+  updateProfile,
+  changePassword,
   login,
   me,
 };

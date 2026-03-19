@@ -12,7 +12,15 @@ const createUserSchema = z.object({
 const updateUserSchema = z.object({
   fullName: z.string().min(2).nullable().optional(),
   role: z.enum(["USER", "ADMIN"]).optional(),
+  state: z.enum(["REGISTERED", "INACTIVE", "ACTIVE", "ELIGIBLE", "SUSPENDED"]).optional(),
 });
+
+function generateTempPassword() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const makeChunk = () =>
+    Array.from({ length: 4 }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join("");
+  return `Mowl-${makeChunk()}-${makeChunk()}`;
+}
 
 exports.listUsers = async (req, res) => {
   try {
@@ -159,7 +167,16 @@ exports.updateUser = async (req, res) => {
     });
   }
 
-  const { fullName, role } = parsed.data;
+  const { fullName, role, state } = parsed.data;
+
+  if (req.user?.id === userId && state && state !== existing.state && state !== "ACTIVE" && state !== "ELIGIBLE") {
+    return res.status(400).json({
+      error: {
+        code: "INVALID_STATE_CHANGE",
+        message: "You cannot deactivate or suspend your own admin account.",
+      },
+    });
+  }
 
   const user = await prisma.$transaction(async (tx) => {
     const updated = await tx.user.update({
@@ -167,10 +184,11 @@ exports.updateUser = async (req, res) => {
       data: {
         ...(fullName !== undefined ? { fullName } : {}),
         ...(role ? { role } : {}),
+        ...(state ? { state } : {}),
         ...(role === "ADMIN"
           ? {
               emailVerifiedAt: existing.emailVerifiedAt || new Date(),
-              state: "ACTIVE",
+              state: state || "ACTIVE",
             }
           : {}),
       },
@@ -208,5 +226,48 @@ exports.updateUser = async (req, res) => {
       state: user.state,
       createdAt: user.createdAt,
     },
+  });
+};
+
+exports.resetUserPassword = async (req, res) => {
+  const userId = req.params.userId;
+  if (!userId) {
+    return res.status(400).json({
+      error: { code: "VALIDATION_ERROR", message: "userId is required." },
+    });
+  }
+
+  const existing = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, email: true, fullName: true, role: true, state: true },
+  });
+
+  if (!existing) {
+    return res.status(404).json({
+      error: { code: "NOT_FOUND", message: "User not found." },
+    });
+  }
+
+  const tempPassword = generateTempPassword();
+  const passwordHash = await bcrypt.hash(tempPassword, 12);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.user.update({
+      where: { id: userId },
+      data: {
+        password: passwordHash,
+        ...(existing.state === "REGISTERED" || existing.state === "INACTIVE" ? { state: "ACTIVE" } : {}),
+      },
+    });
+
+    await tx.passwordResetToken.deleteMany({
+      where: { userId },
+    });
+  });
+
+  return res.status(200).json({
+    user: existing,
+    tempPassword,
+    message: "Temporary password generated successfully.",
   });
 };

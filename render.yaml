@@ -20,5 +20,19 @@ services:
         sync: false
       - key: RESEND_API_KEY
         sync: false
+      - key: SUPPORT_EMAIL
+        value: support@moneyowlcredit.com
       - key: RESET_TOKEN_MINUTES
         value: "30"
+      - key: ENABLE_LOAN_REMINDER_JOBS
+        value: "false"
+      - key: LOAN_REMINDER_INTERVAL_MINUTES
+        value: "60"
+      - key: LOAN_REMINDER_UPCOMING_DAYS
+        value: "7"
+      - key: LOAN_REMINDER_REPEAT_DAYS
+        value: "7"
+      - key: LOAN_REMINDER_EMAIL_ENABLED
+        value: "true"
+      - key: LOAN_REMINDER_INAPP_ENABLED
+        value: "true"

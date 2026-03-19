@@ -6,6 +6,8 @@ const {
   verifyEmailOtp,
   resendEmailOtp,
   updateFinancialProfile,
+  updateProfile,
+  changePassword,
   login,
   me,
 } = require("../controllers/auth.controller");
@@ -28,5 +30,7 @@ router.post("/reset-password", resetPassword);
 // ✅ Pattern 1: user profile + entitlements
 router.get("/me", requireAuth, me);
 router.patch("/financial-profile", requireAuth, updateFinancialProfile);
+router.patch("/profile", requireAuth, updateProfile);
+router.post("/change-password", requireAuth, changePassword);
 
 module.exports = router;

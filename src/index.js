@@ -17,11 +17,13 @@ const reportsRoutes = require("./routes/reports.routes");
 const adminSwapsRoutes = require("./routes/admin-swaps.routes");
 const adminConfigRoutes = require("./routes/admin-config.routes");
 const adminPausesRoutes = require("./routes/admin-pauses.routes");
+const adminLoansRoutes = require("./routes/admin-loans.routes");
 const investRoutes = require("./routes/invest.routes");
 const adminInvestRoutes = require("./routes/admin-invest.routes");
 const statementsRoutes = require("./routes/statements.routes");
 const loansRoutes = require("./routes/loans.routes");
 const fundTransfersRoutes = require("./routes/fund-transfers.routes");
+const { startLoanReminderScheduler } = require("./services/loan-reminders.service");
 const app = express();
 app.set("trust proxy", 1);
 
@@ -76,6 +78,7 @@ app.use("/v1/admin/swaps", adminSwapsRoutes);
 app.use("/v1/admin/reports", adminReportsRoutes);
 app.use("/v1/admin/config", adminConfigRoutes);
 app.use("/v1/admin/pauses", adminPausesRoutes);
+app.use("/v1/admin/loans", adminLoansRoutes);
 app.use("/v1/admin/invest", adminInvestRoutes);
 app.use("/v1/statements", statementsRoutes);
 
@@ -85,3 +88,5 @@ app.use("/v1/statements", statementsRoutes);
 app.listen(PORT, () => {
   console.log(`API running on http://localhost:${PORT}`);
 });
+
+startLoanReminderScheduler();

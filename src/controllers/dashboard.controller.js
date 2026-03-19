@@ -309,6 +309,9 @@ exports.getAdminDashboard = async (req, res) => {
     const hasUserWorkspace = !!prisma.userWorkspace;
     const hasInvestmentPlan = !!prisma.investmentPlan;
     const hasLoanTransaction = !!prisma.loanTransaction;
+    const hasLoanApplication = !!prisma.loanApplication;
+    const hasLoanRepaymentInstallment = !!prisma.loanRepaymentInstallment;
+    const hasLoanRepaymentPayment = !!prisma.loanRepaymentPayment;
     const hasFundTransferTransaction = !!prisma.fundTransferTransaction;
 
     // system totals
@@ -327,6 +330,10 @@ exports.getAdminDashboard = async (req, res) => {
       totalInvestPlans,
       activeInvestPlans,
       investUsersWithPlans,
+      disbursedLoanCount,
+      overdueInstallmentCount,
+      pendingLoanRepaymentReviews,
+      loanRepaymentTotalAgg,
       loanTxCount,
       loanUsersWithActivity,
       fundTransferTxCount,
@@ -362,6 +369,31 @@ exports.getAdminDashboard = async (req, res) => {
       hasInvestmentPlan
         ? prisma.investmentPlan.groupBy({ by: ["userId"] }).then((rows) => rows.length).catch(() => 0)
         : Promise.resolve(0),
+      hasLoanApplication ? prisma.loanApplication.count({ where: { disbursedAt: { not: null } } }).catch(() => 0) : Promise.resolve(0),
+      hasLoanRepaymentInstallment
+        ? prisma.loanRepaymentInstallment
+            .count({
+              where: {
+                status: { in: ["PENDING", "PARTIAL", "OVERDUE"] },
+                dueDate: { lt: now },
+              },
+            })
+            .catch(() => 0)
+        : Promise.resolve(0),
+      hasLoanRepaymentPayment
+        ? prisma.loanRepaymentPayment.count({ where: { status: "SUBMITTED" } }).catch(() => 0)
+        : Promise.resolve(0),
+      hasLoanTransaction
+        ? prisma.loanTransaction
+            .aggregate({
+              where: {
+                type: "REPAYMENT",
+                direction: "DEBIT",
+              },
+              _sum: { amount: true },
+            })
+            .catch(() => ({ _sum: { amount: 0 } }))
+        : Promise.resolve({ _sum: { amount: 0 } }),
       hasLoanTransaction ? prisma.loanTransaction.count().catch(() => 0) : Promise.resolve(0),
       hasLoanTransaction
         ? prisma.loanTransaction.groupBy({ by: ["userId"] }).then((rows) => rows.length).catch(() => 0)
@@ -501,6 +533,10 @@ exports.getAdminDashboard = async (req, res) => {
           users: usersByWorkspace.LOANS || 0,
           accountsWithActivity: loanUsersWithActivity,
           transactions: loanTxCount,
+          activePlans: disbursedLoanCount,
+          missedContributions: overdueInstallmentCount,
+          pendingPayouts: pendingLoanRepaymentReviews,
+          repaidTotal: Number((loanRepaymentTotalAgg?._sum?.amount || 0).toFixed(2)),
           trends: buildTrends(
             workspaceDates("LOANS"),
             loanActivity30d.map((x) => x.createdAt)
