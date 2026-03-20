@@ -1,5 +1,6 @@
 const { z } = require("zod");
 const { prisma } = require("../db");
+const { ensureDefaultRuleConfig } = require("../services/rules.service");
 
 const updateRuleSchema = z
   .object({
@@ -24,10 +25,6 @@ const updateRuleSchema = z
   .refine((payload) => Object.keys(payload).length > 0, {
     message: "At least one config field must be provided.",
   });
-
-async function getLatestRule() {
-  return prisma.ruleConfig.findFirst({ orderBy: { version: "desc" } });
-}
 
 function toRuleResponse(rule) {
   const enabledPaymentMethods = Array.isArray(rule.contributionsEnabledPaymentMethods)
@@ -57,15 +54,7 @@ function toRuleResponse(rule) {
 
 exports.getCurrentRuleConfig = async (req, res) => {
   try {
-    const rule = await getLatestRule();
-    if (!rule) {
-      return res.status(404).json({
-        error: {
-          code: "RULE_CONFIG_MISSING",
-          message: "No rule config found. Seed a rule config first.",
-        },
-      });
-    }
+    const rule = await ensureDefaultRuleConfig();
     return res.json({ rule: toRuleResponse(rule) });
   } catch (err) {
     console.error(err);
@@ -86,15 +75,7 @@ exports.updateCurrentRuleConfig = async (req, res) => {
       });
     }
 
-    const current = await getLatestRule();
-    if (!current) {
-      return res.status(404).json({
-        error: {
-          code: "RULE_CONFIG_MISSING",
-          message: "No rule config found. Seed a rule config first.",
-        },
-      });
-    }
+    const current = await ensureDefaultRuleConfig();
 
     const normalizedData = {
       ...parsed.data,

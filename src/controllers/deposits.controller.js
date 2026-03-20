@@ -1,4 +1,5 @@
 const { prisma } = require("../db");
+const { ensureDefaultRuleConfig } = require("../services/rules.service");
 
 // POST /v1/deposits/initial
 exports.initialDeposit = async (req, res) => {
@@ -19,15 +20,7 @@ exports.initialDeposit = async (req, res) => {
     }
 
     // Get latest rules (must exist in DB)
-    const ruleConfig = await prisma.ruleConfig.findFirst({
-      orderBy: { version: "desc" },
-    });
-
-    if (!ruleConfig) {
-      return res.status(500).json({
-        error: { code: "RULE_CONFIG_MISSING", message: "Rule config not found. Seed RuleConfig first." },
-      });
-    }
+    const ruleConfig = await ensureDefaultRuleConfig();
 
     if (Number(amount) < ruleConfig.minInitialDeposit) {
       return res.status(403).json({

@@ -1,9 +1,6 @@
 const { prisma } = require("../db");
 const { getUserTrustProfile, normalizeTrustThreshold } = require("../services/trust-score.service");
-
-async function getLatestRuleConfig() {
-  return prisma.ruleConfig.findFirst({ orderBy: { version: "desc" } });
-}
+const { ensureDefaultRuleConfig } = require("../services/rules.service");
 
 
 exports.getEligibility = async (req, res) => {
@@ -21,12 +18,7 @@ exports.getEligibility = async (req, res) => {
       });
     }
 
-    const rule = await getLatestRuleConfig();
-    if (!rule) {
-      return res.status(500).json({
-        error: { code: "RULE_CONFIG_MISSING", message: "Rule config not found." },
-      });
-    }
+    const rule = await ensureDefaultRuleConfig();
 
     const trust = await getUserTrustProfile(prisma, userId, {
       baseLimitPct: Number(rule.maxDisposableCommitmentPct || 0.6),
